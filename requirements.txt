@@ -1,6 +1,5 @@
-Flask==2.3.3
-trimesh
-networkx
-lxml
-scipy
-gunicorn
+Flask==2.3.4
+trimesh==3.9.42
+numpy==1.26.2
+networkx==3.1
+lxml==4.9.3
