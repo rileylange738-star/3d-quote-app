@@ -1,82 +1,123 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, jsonify
 import trimesh
-import os
+import uuid
 
 app = Flask(__name__)
 
-# Price per gram based on material
+# Realistic densities in g/cm³
+MATERIAL_DENSITIES = {
+    "PLA": 1.25,
+    "PETG": 1.27,
+    "TPU": 1.20
+}
+
+# Prices per gram
 MATERIAL_PRICES = {
     "PLA": 0.12,
     "PETG": 0.12,
     "TPU": 0.20
 }
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
+calculation_results = {}
+
+HTML = """
+<!doctype html>
 <html>
 <head>
     <title>3D Print Quote</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; }
-        input, select, button { margin: 10px 0; padding: 8px; width: 300px; }
-        .result { margin-top: 20px; font-weight: bold; }
+        form, .result { margin-top: 20px; }
+        input, select, button { margin: 5px 0; padding: 8px; width: 250px; }
     </style>
 </head>
 <body>
-    <h1>3D Print Quote Calculator</h1>
-    <form method="post" enctype="multipart/form-data">
-        <label>Upload 3D Model (STL/OBJ/3MF):</label><br>
-        <input type="file" name="model" required><br>
+<h1>3D Print Quote</h1>
 
-        <label>Select Material:</label><br>
-        <select name="material" required>
-            <option value="PLA">PLA ($0.12/g)</option>
-            <option value="PETG">PETG ($0.12/g)</option>
-            <option value="TPU">TPU ($0.20/g)</option>
-        </select><br>
+<form id="quoteForm" enctype="multipart/form-data">
+    <label for="file">Upload 3D model (STL, OBJ, 3MF):</label><br>
+    <input type="file" id="file" name="file" required><br>
+    
+    <label for="material">Select material:</label><br>
+    <select name="material" id="material" required>
+        <option value="PLA">PLA ($0.12/g)</option>
+        <option value="PETG">PETG ($0.12/g)</option>
+        <option value="TPU">TPU ($0.20/g)</option>
+    </select><br>
 
-        <button type="submit">Calculate</button>
-    </form>
-    {% if cost is not none %}
-        <div class="result">
-            Estimated Cost: ${{ "%.2f"|format(cost) }}
-        </div>
-    {% endif %}
+    <button type="submit">Calculate Price</button>
+</form>
+
+<div class="result" id="result"></div>
+
+<script>
+document.getElementById('quoteForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const file = document.getElementById('file').files[0];
+    const material = document.getElementById('material').value;
+    if (!file) return alert("Please select a file");
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('material', material);
+
+    const response = await fetch('/calculate', {
+        method: 'POST',
+        body: formData
+    });
+    const data = await response.json();
+
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerText = 'Calculating...';
+
+    const interval = setInterval(async () => {
+        const res = await fetch(`/result/${data.id}`);
+        const json = await res.json();
+        if (json.result) {
+            resultDiv.innerText = 'Price: ' + json.result;
+            clearInterval(interval);
+        }
+    }, 1000);
+});
+</script>
 </body>
 </html>
 """
 
-@app.route("/", methods=["GET", "POST"])
-def calculate_cost():
-    cost = None
-    if request.method == "POST":
-        uploaded_file = request.files.get("model")
-        material = request.form.get("material")
-        price_per_gram = MATERIAL_PRICES.get(material, 0.20)  # fallback to 0.20
+@app.route('/')
+def index():
+    return render_template_string(HTML)
 
-        if uploaded_file:
-            # Save the uploaded file temporarily
-            os.makedirs("temp_model", exist_ok=True)
-            filepath = os.path.join("temp_model", uploaded_file.filename)
-            uploaded_file.save(filepath)
+@app.route('/calculate', methods=['POST'])
+def calculate():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file_content = request.files['file']
+    material = request.form.get('material', 'PLA')
 
-            try:
-                # Load model and compute volume in mm^3
-                mesh = trimesh.load(filepath)
-                volume_mm3 = mesh.volume if hasattr(mesh, "volume") else 0
+    calc_id = str(uuid.uuid4())
+    calculation_results[calc_id] = None
 
-                # Approximate weight in grams (PLA/PETG/TPU density ~1.24 g/cm³)
-                density = 1.24  # g/cm³
-                weight_grams = volume_mm3 / 1000 * density  # convert mm³ to cm³
-                cost = weight_grams * price_per_gram
+    try:
+        file_type = file_content.filename.split('.')[-1].lower()
+        if file_type not in ['stl', 'obj', '3mf']:
+            calculation_results[calc_id] = f"Error: Unsupported file type {file_type}"
+        else:
+            mesh = trimesh.load(file_content, file_type=file_type)
+            # Volume in mm³ → cm³
+            volume_cm3 = mesh.volume / 1000
+            mass_g = volume_cm3 * MATERIAL_DENSITIES.get(material, 1.25)
+            price = mass_g * MATERIAL_PRICES.get(material, 0.12)
+            calculation_results[calc_id] = f"${price:.2f}"
+    except Exception as e:
+        calculation_results[calc_id] = f"Error: {str(e)}"
 
-            except Exception as e:
-                cost = 0
-                print("Error loading model:", e)
-            finally:
-                os.remove(filepath)
+    return jsonify({"id": calc_id})
 
-    return render_template_string(HTML_TEMPLATE, cost=cost)
+@app.route('/result/<calc_id>')
+def result(calc_id):
+    return jsonify({"result": calculation_results.get(calc_id)})
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
