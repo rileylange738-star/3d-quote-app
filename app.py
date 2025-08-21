@@ -14,44 +14,147 @@ SUPPORTED_EXTENSIONS = ["stl", "obj", "3mf"]
 # HTML template
 TEMPLATE = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D Print Quote Generator</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .drop-zone {
-            border: 2px dotted green;
-            padding: 30px;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        h1 {
             text-align: center;
-            cursor: pointer;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
+            color: #333;
         }
-        input[type=file] { display:none; }
-        button {
-            background-color: #007BFF;
+
+        .drop-area {
+            border: 2px dotted green;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+            margin-bottom: 25px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .drop-area.dragover {
+            background-color: #e0ffe0;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        label.button {
+            display: inline-block;
+            padding: 12px 25px;
+            margin: 10px 0;
+            font-size: 16px;
+            font-weight: bold;
             color: white;
-            padding: 10px 20px;
+            background-color: #007BFF;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
+            text-align: center;
+            transition: background-color 0.3s;
         }
-        button:hover { background-color: #0056b3; }
-        .result { font-size: 1.2em; margin-top: 20px; }
+
+        label.button:hover {
+            background-color: #0056b3;
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f1f8ff;
+            border-radius: 8px;
+            font-size: 18px;
+            color: #333;
+            text-align: center;
+        }
+
+        .flex-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .flex-row input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
-    <h1>3D Print Quote Generator</h1>
-    <form method="POST" enctype="multipart/form-data">
-        <label class="drop-zone" for="file">Drag and drop your STL, OBJ, or 3MF file here</label>
-        <input type="file" id="file" name="file" required>
-        <br>
-        <button type="submit">Get Quote</button>
-    </form>
-    {% if result %}
-        <div class="result">Estimated Cost: {{ result }}</div>
-    {% endif %}
+    <div class="container">
+        <h1>3D Print Quote Generator</h1>
+
+        <form id="quoteForm" method="POST" enctype="multipart/form-data">
+            <div class="drop-area" id="drop-area">
+                Drag & Drop your STL, OBJ, or 3MF file here<br>or click to select
+                <input type="file" id="fileElem" name="file" accept=".stl,.obj,.3mf">
+            </div>
+
+            <div class="flex-row">
+                <input type="number" step="0.01" name="price_per_gram" placeholder="Price per gram ($)" required>
+                <input type="number" step="0.01" name="price_per_mm3" placeholder="Price per mm³ ($)">
+            </div>
+
+            <button type="submit" class="button">Calculate Quote</button>
+        </form>
+
+        {% if quote %}
+        <div class="result">
+            <strong>Estimated Price:</strong> ${{ quote }}
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        const dropArea = document.getElementById("drop-area");
+        const fileInput = document.getElementById("fileElem");
+
+        dropArea.addEventListener("click", () => fileInput.click());
+
+        dropArea.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropArea.classList.add("dragover");
+        });
+
+        dropArea.addEventListener("dragleave", () => {
+            dropArea.classList.remove("dragover");
+        });
+
+        dropArea.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropArea.classList.remove("dragover");
+            fileInput.files = e.dataTransfer.files;
+        });
+    </script>
 </body>
 </html>
+
 """
 
 @app.route("/", methods=["GET", "POST"])
@@ -87,3 +190,4 @@ def index():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
