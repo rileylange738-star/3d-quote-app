@@ -1,123 +1,178 @@
-from flask import Flask, request, render_template_string, jsonify
+from flask import Flask, request, jsonify, render_template_string
 import trimesh
-import uuid
 
 app = Flask(__name__)
 
-# Realistic densities in g/cm³
-MATERIAL_DENSITIES = {
-    "PLA": 1.25,
-    "PETG": 1.27,
-    "TPU": 1.20
-}
+# Filament properties
+FILAMENT_DENSITY = 1.25 / 1000  # g/mm³
+COST_PER_GRAM = {"PLA": 0.12, "PETG": 0.12, "TPU": 0.20}
 
-# Prices per gram
-MATERIAL_PRICES = {
-    "PLA": 0.12,
-    "PETG": 0.12,
-    "TPU": 0.20
-}
+# Supported file types
+SUPPORTED_EXTENSIONS = ["stl", "obj", "3mf"]
 
-calculation_results = {}
-
-HTML = """
-<!doctype html>
+# HTML template
+TEMPLATE = """
+<!DOCTYPE html>
 <html>
 <head>
-    <title>3D Print Quote</title>
+    <title>3D Print Quote Generator</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        form, .result { margin-top: 20px; }
-        input, select, button { margin: 5px 0; padding: 8px; width: 250px; }
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        h1 { margin-bottom: 40px; }
+        .drop-zone {
+            border: 2px dotted green;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        input[type=file] { display:none; }
+        label { font-weight: bold; display:block; }
+        select { margin-bottom: 30px; padding: 5px; }
+        button {
+            background-color: #007BFF;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display:block;
+            margin-bottom: 20px;
+        }
+        button:hover { background-color: #0056b3; }
+        .result { font-size: 1.2em; margin-top: 20px; }
+        #loading-bar {
+            display:none;
+            width: 100%;
+            height: 20px;
+            background-color: #f3f3f3;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        #loading-bar-inner {
+            height: 100%;
+            width: 0%;
+            background-color: #007BFF;
+            transition: width 0.2s;
+        }
+        #file-name {
+            margin-top: 10px;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
-<h1>3D Print Quote</h1>
+    <h1>3D Print Quote Generator</h1>
 
-<form id="quoteForm" enctype="multipart/form-data">
-    <label for="file">Upload 3D model (STL, OBJ, 3MF):</label><br>
-    <input type="file" id="file" name="file" required><br>
-    
-    <label for="material">Select material:</label><br>
-    <select name="material" id="material" required>
+    <label class="drop-zone" for="file">Drag and drop your STL, OBJ, or 3MF file here</label>
+    <input type="file" id="file" name="file" onchange="updateFileName()">
+    <div id="file-name"></div>
+
+    <label for="material" style="margin-top:50px; margin-bottom:15px;">Select Material:</label>
+    <select name="material" id="material">
         <option value="PLA">PLA ($0.12/g)</option>
         <option value="PETG">PETG ($0.12/g)</option>
         <option value="TPU">TPU ($0.20/g)</option>
-    </select><br>
+    </select>
 
-    <button type="submit">Calculate Price</button>
-</form>
+    <button onclick="calculateQuote()">Get Quote</button>
 
-<div class="result" id="result"></div>
+    <div id="loading-bar"><div id="loading-bar-inner"></div></div>
 
-<script>
-document.getElementById('quoteForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const file = document.getElementById('file').files[0];
-    const material = document.getElementById('material').value;
-    if (!file) return alert("Please select a file");
+    <div class="result" id="result"></div>
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('material', material);
-
-    const response = await fetch('/calculate', {
-        method: 'POST',
-        body: formData
-    });
-    const data = await response.json();
-
-    const resultDiv = document.getElementById('result');
-    resultDiv.innerText = 'Calculating...';
-
-    const interval = setInterval(async () => {
-        const res = await fetch(`/result/${data.id}`);
-        const json = await res.json();
-        if (json.result) {
-            resultDiv.innerText = 'Price: ' + json.result;
-            clearInterval(interval);
+    <script>
+        function updateFileName() {
+            let fileInput = document.getElementById('file');
+            let fileNameDiv = document.getElementById('file-name');
+            if (fileInput.files.length > 0) {
+                fileNameDiv.textContent = "Selected file: " + fileInput.files[0].name;
+            } else {
+                fileNameDiv.textContent = "";
+            }
         }
-    }, 1000);
-});
-</script>
+
+        function calculateQuote() {
+            let fileInput = document.getElementById('file');
+            if (!fileInput.files.length) {
+                alert("Please select a file first.");
+                return;
+            }
+            let material = document.getElementById('material').value;
+            let file = fileInput.files[0];
+
+            let formData = new FormData();
+            formData.append("file", file);
+            formData.append("material", material);
+
+            let loadingBar = document.getElementById('loading-bar');
+            let loadingInner = document.getElementById('loading-bar-inner');
+            let resultDiv = document.getElementById('result');
+            resultDiv.textContent = "";
+            loadingInner.style.width = '0%';
+            loadingBar.style.display = 'block';
+
+            let progress = 0;
+            let interval = setInterval(() => {
+                if (progress < 90) {
+                    progress += 10;
+                    loadingInner.style.width = progress + '%';
+                }
+            }, 300);
+
+            fetch("/calculate", {
+                method: "POST",
+                body: formData
+            }).then(response => response.json())
+            .then(data => {
+                clearInterval(interval);
+                loadingInner.style.width = '100%';
+                resultDiv.textContent = data.result;
+                setTimeout(() => { loadingBar.style.display = 'none'; }, 500);
+            }).catch(err => {
+                clearInterval(interval);
+                loadingInner.style.width = '0%';
+                resultDiv.textContent = "Error: " + err;
+                loadingBar.style.display = 'none';
+            });
+        }
+    </script>
 </body>
 </html>
 """
 
-@app.route('/')
+@app.route("/")
 def index():
-    return render_template_string(HTML)
+    return render_template_string(TEMPLATE)
 
-@app.route('/calculate', methods=['POST'])
+@app.route("/calculate", methods=["POST"])
 def calculate():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file_content = request.files['file']
-    material = request.form.get('material', 'PLA')
+    file = request.files.get("file")
+    material = request.form.get("material", "PLA")
+    if not file:
+        return jsonify({"result": "No file uploaded"})
 
-    calc_id = str(uuid.uuid4())
-    calculation_results[calc_id] = None
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        return jsonify({"result": f"Unsupported file type: {ext}"})
 
     try:
-        file_type = file_content.filename.split('.')[-1].lower()
-        if file_type not in ['stl', 'obj', '3mf']:
-            calculation_results[calc_id] = f"Error: Unsupported file type {file_type}"
+        if ext == "3mf":
+            import networkx  # required by trimesh for 3MF
+            import lxml
+            mesh = trimesh.load(file, file_type="3mf")
         else:
-            mesh = trimesh.load(file_content, file_type=file_type)
-            # Volume in mm³ → cm³
-            volume_cm3 = mesh.volume / 1000
-            mass_g = volume_cm3 * MATERIAL_DENSITIES.get(material, 1.25)
-            price = mass_g * MATERIAL_PRICES.get(material, 0.12)
-            calculation_results[calc_id] = f"${price:.2f}"
+            mesh = trimesh.load(file, file_type=ext)
+
+        volume_mm3 = mesh.volume
+        mass_g = volume_mm3 * FILAMENT_DENSITY
+        cost = round(mass_g * COST_PER_GRAM.get(material, 0.12), 2)
+
+        return jsonify({"result": f"${cost} ({mass_g:.2f}g)"})
     except Exception as e:
-        calculation_results[calc_id] = f"Error: {str(e)}"
+        return jsonify({"result": f"Error processing file: {e}"})
 
-    return jsonify({"id": calc_id})
-
-@app.route('/result/<calc_id>')
-def result(calc_id):
-    return jsonify({"result": calculation_results.get(calc_id)})
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
