@@ -3,3 +3,4 @@ trimesh==3.9.42
 numpy==1.26.2
 networkx==3.1
 gunicorn==21.2.0
+lxml==4.9.3
