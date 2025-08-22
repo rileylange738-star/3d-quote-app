@@ -1,5 +1,5 @@
 Flask==2.3.3
-trimesh==3.29.25
+trimesh==4.7.4
 numpy==1.26.2
 lxml==4.9.3
 networkx==3.2
