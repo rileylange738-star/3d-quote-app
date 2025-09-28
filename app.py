@@ -75,6 +75,7 @@ TEMPLATE = """
         <option value="PLA">PLA ($0.12/g)</option>
         <option value="PETG">PETG ($0.12/g)</option>
         <option value="TPU">TPU ($0.20/g)</option>
+        <option value="PETG-CF">PETG-CF ($0.20/g)</option>
     </select>
 
     <button onclick="calculateQuote()">Get Quote</button>
@@ -176,3 +177,4 @@ def calculate():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
