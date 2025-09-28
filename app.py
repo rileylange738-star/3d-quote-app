@@ -5,7 +5,7 @@ app = Flask(__name__)
 
 # Filament properties
 FILAMENT_DENSITY = 1.25 / 1000  # g/mm³
-COST_PER_GRAM = {"PLA": 0.12, "PETG": 0.12, "TPU": 0.20}
+COST_PER_GRAM = {"PLA": 0.12, "PETG": 0.12, "TPU": 0.20, "PETG-CF": 0.20}
 
 # Supported file types
 SUPPORTED_EXTENSIONS = ["stl", "obj", "3mf"]
@@ -177,4 +177,5 @@ def calculate():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
